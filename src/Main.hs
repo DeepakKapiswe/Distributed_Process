@@ -29,29 +29,31 @@ start = do
   loop
 
 loop::Process ()
-loop = do
-  receiveWait [match $ \(i::Double) -> liftIO .putStrLn $ "got this : " ++ show i,
-              match $ \(p::ProcessId)-> send p $ "replying Back to "++ show p]
-  loop
+loop = forever $ receiveWait [match $ \(i::Double) -> liftIO .putStrLn $ "got this : " ++ show i,
+                 match $ \(p::ProcessId)-> send p $ "replying Back to "++ show p]
 
-sendMsg::(Int,ProcessId) -> Process ()
-sendMsg (seed,pid) = do
+sendMsg::(Int,Int,[ProcessId]) -> Process ()
+sendMsg (sendFor,seed,pids) = do
+   currentTime <- liftIO getCurrentTime
    let randomList = randomRs (0::Double,1::Double) (mkStdGen seed)
-   sendRandoms randomList pid
+       sendingTime = addUTCTime (fromIntegral sendFor)  currentTime
+   sendRandoms sendingTime randomList pids
 
-sendRandoms::[Double]->ProcessId->Process ()
-sendRandoms rNums pid = do
-  spawnLocal (send pid (head rNums))
-  sendRandoms (tail rNums) pid
+sendRandoms::UTCTime->[Double]->[ProcessId]->Process ()
+sendRandoms stoppingTime rNums pids = do
+  currentTime <- liftIO getCurrentTime
+  if currentTime >= stoppingTime then
+     say "Time Up! For Sending Msg"
+      else do
+         spawnLocal (forM_ pids $ \p -> send p (head rNums))
+         sendRandoms stoppingTime (tail rNums) pids
 
-remotable ['start, 'sendMsg, 'loop]
+remotable ['start, 'sendMsg]
 
 u=undefined
 
-broadCast::Int->BroadCastingGroup->Process ()
-broadCast seed (BG n recvs) = do
-  forever $ forM_ recvs $ \r->do
-     spawn n $ $(mkClosure 'sendMsg) (seed,r)
+broadCast::Int->Int->BroadCastingGroup->Process ()
+broadCast sendFor seed (BG n recvs) = void $ spawn n $ $(mkClosure 'sendMsg) (sendFor,seed,recvs)
 
 makeBroadCastGroups::[NodeId]->Process [BroadCastingGroup]
 makeBroadCastGroups nodes = do
@@ -65,15 +67,11 @@ myRemoteTable = Main.__remoteTable initRemoteTable
 
 master :: Backend -> [NodeId] -> Process ()
 master backend slaves = do
-  liftIO . putStrLn $ "Slave: " ++ show slaves
+  liftIO . putStrLn $ "Slaves: " ++ show slaves
   mnode<-getSelfNode
   bGroups <- makeBroadCastGroups $ mnode:slaves
-  forM_ bGroups $ broadCast (1::Int)
+  forM_ bGroups $ broadCast 1 1
 
---  liftIO $ threadDelay 2000000
-
-  -- Terminate the slaves when the master terminates (this is optional)
-  --terminateAllSlaves backend
 
 main :: IO ()
 main = do
