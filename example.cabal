@@ -21,3 +21,5 @@ executable example
                      , binary
                      , distributed-process-simplelocalnet
                      , distributed-process
+                     , random
+                     , time 

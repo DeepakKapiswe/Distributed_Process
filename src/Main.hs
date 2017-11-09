@@ -12,9 +12,11 @@ import           Control.Distributed.Process.Closure
 import           Control.Distributed.Process.Node                   (initRemoteTable)
 import           Control.Monad
 import           Data.Binary
+import           Data.Time.Clock
 import           Data.Typeable
 import           GHC.Generics                                       (Generic)
 import           System.Environment                                 (getArgs)
+import           System.Random
 import           Text.Printf
 
 data BroadCastingGroup = BG NodeId [ProcessId]
@@ -28,40 +30,33 @@ start = do
 
 loop::Process ()
 loop = do
-  p <- getSelfPid
-  liftIO . putStrLn $ show p ++ " waiting for msg "
-  receiveWait [match $ \(i::Int) -> liftIO .putStrLn $ "got this : " ++ show i,
+  receiveWait [match $ \(i::Double) -> liftIO .putStrLn $ "got this : " ++ show i,
               match $ \(p::ProcessId)-> send p $ "replying Back to "++ show p]
   loop
 
 sendMsg::(Int,ProcessId) -> Process ()
-sendMsg (msg,pid) = do
-   send pid msg
+sendMsg (seed,pid) = do
+   let randomList = randomRs (0::Double,1::Double) (mkStdGen seed)
+   sendRandoms randomList pid
 
-sendAgain::ProcessId -> Process ()
-sendAgain pid = do
-  liftIO . putStrLn $ "write msg to send ::"
-  msg <- liftIO getLine
-  send pid msg
+sendRandoms::[Double]->ProcessId->Process ()
+sendRandoms rNums pid = do
+  spawnLocal (send pid (head rNums))
+  sendRandoms (tail rNums) pid
 
-
-remotable ['sendAgain, 'start, 'sendMsg, 'loop]
+remotable ['start, 'sendMsg, 'loop]
 
 u=undefined
 
 broadCast::Int->BroadCastingGroup->Process ()
-broadCast msg (BG n recvs) = do
-  forM_ recvs $ \r->do
-     spawn n $ $(mkClosure 'sendMsg) (msg,r)
-     pid <- getSelfPid
-    -- n <-getSelfNode
-     liftIO.putStrLn $ show pid
-    -- liftIO.putStrLn $ show n
+broadCast seed (BG n recvs) = do
+  forever $ forM_ recvs $ \r->do
+     spawn n $ $(mkClosure 'sendMsg) (seed,r)
 
 makeBroadCastGroups::[NodeId]->Process [BroadCastingGroup]
 makeBroadCastGroups nodes = do
   pids <- forM nodes $ \node -> spawn node $ $(mkStaticClosure 'start)
-  let bGroups = zipWith BG nodes $ zipWith (\p ps -> (filter (/=p) ps)) pids (repeat pids)
+  let bGroups = zipWith BG nodes (repeat pids)
   return bGroups
 
 
@@ -73,9 +68,9 @@ master backend slaves = do
   liftIO . putStrLn $ "Slave: " ++ show slaves
   mnode<-getSelfNode
   bGroups <- makeBroadCastGroups $ mnode:slaves
-  forM_ bGroups $ broadCast (1111::Int)
+  forM_ bGroups $ broadCast (1::Int)
 
-  liftIO $ threadDelay 2000000
+--  liftIO $ threadDelay 2000000
 
   -- Terminate the slaves when the master terminates (this is optional)
   --terminateAllSlaves backend
