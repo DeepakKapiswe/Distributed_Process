@@ -54,8 +54,7 @@ sendRandoms stoppingTime rNums pids = do
   if currentTime >= stoppingTime then do
        node <- getSelfNode
        let allNodeCount = length pids
-       spawnLocal (forM_ pids $ \p -> send p (node,allNodeCount))
-       say "Time Up! For Sending Msg"
+       void $ spawnLocal (forM_ pids $ \p -> send p (node,allNodeCount))
       else do
          spawnLocal (forM_ pids $ \p -> send p (head rNums))
          sendRandoms stoppingTime (tail rNums) pids
@@ -63,8 +62,7 @@ sendRandoms stoppingTime rNums pids = do
 remotable ['start, 'sendMsg]
 
 broadCast::Int->Int->BroadCastingGroup->Process ()
-broadCast sendFor seed (BG n recvs) = do
-       liftIO . putStrLn .show $ (BG n recvs)
+broadCast sendFor seed (BG n recvs) =
        void $ spawn n $ $(mkClosure 'sendMsg) (sendFor,seed,recvs)
 
 makeBroadCastGroups::[NodeId]->Process [BroadCastingGroup]
@@ -77,23 +75,26 @@ makeBroadCastGroups nodes = do
 myRemoteTable :: RemoteTable
 myRemoteTable = Main.__remoteTable initRemoteTable
 
-master :: Backend -> [NodeId] -> Process ()
-master backend slaves = do
-  liftIO . putStrLn $ "Slaves: " ++ show slaves
+master :: Int->Int->Int->Backend -> [NodeId] -> Process ()
+master sendFor waitFor seed backend slaves = do
+  say "Master Node Started"
   mnode<-getSelfNode
   bGroups <- makeBroadCastGroups $ mnode:slaves
-  forM_ bGroups $ broadCast 1 1
-  liftIO $ threadDelay 2000000
+  say "All Nodes Started"
+  zipWithM_ (broadCast sendFor) [seed..] bGroups
+  say $ printf "sending messages for %d seconds" sendFor
+  liftIO. threadDelay $ 1000000 * sendFor
+  say $ printf "waiting for printing the results %d seconds" waitFor
+  liftIO. threadDelay $ 1000000 * waitFor
   terminateAllSlaves backend
 
 main :: IO ()
 main = do
   args <- getArgs
-
   case args of
-    ["master", host, port] -> do
+    ["master", host, port,"--send-for",k,"--wait-for",l,"--with-seed",s] -> do
       backend <- initializeBackend host port myRemoteTable
-      startMaster backend (master backend)
+      startMaster backend (master (read k) (read l) (read s) backend)
     ["slave", host, port] -> do
       backend <- initializeBackend host port myRemoteTable
       startSlave backend
