@@ -2,13 +2,13 @@ name:                example
 version:             0.1.0.0
 -- synopsis:
 -- description:
-homepage:            https://github.com/githubuser/example#readme
+homepage:            https://gitlab.com/deepakkapiswe/CloudHaskellBeginner#readme
 license:             BSD3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2017 Author name here
-category:            Web
+author:              Deepak Kapiswe
+maintainer:          deepakkapiswe@gmail.com
+copyright:           2017 Deepak Kapiswe
+category:            Cloud
 build-type:          Simple
 cabal-version:       >=1.10
 extra-source-files:  README.md
