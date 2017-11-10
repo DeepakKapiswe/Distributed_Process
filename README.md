@@ -18,10 +18,30 @@ My goal is to implement a distributed system in which:
 
 3: after the grace period the program gets killed
 
+My assumptions ::
+ 
+ * I have assumed that the underlying network is quiet rock solid for now
+   so almost no failure maps is applicable for the current solution
 
-Solution:
+
+Solution::
 
 I can see inherently there is broadcasting nature in the problem
 
-So I am trying to build an infrastructure using which every node can broadcast its message to all others
+So I was trying to build an infrastructure using which every node can broadcast its message to all others
+
+Now after I built the infrastructure for braodcasting messages it was almost simple to turn off the nodes
+and stop after a specified amount of time, which also I have immplemented.
+
+Now problem I faced when I have to print the results, which requires arranging 
+the messages in the order of sending time which is a fundamental problem in any
+distributed programming. So currently I am researching for the solution or 
+algorithms to model clock in this type of scenarios for it I am refering to 
+Lamport's solution, vector clocks  along with thinking on my own.
+
+Implementing a solution for that will require more time as most of the time I
+spend went on learning basics of the distributive programming or message 
+passing style ...and also gaining hands on CloudHaskell.
+
+
 
