@@ -1,0 +1,22 @@
+#Instructions to run or test the program
+
+--assuming stack is present there 
+
+stack build  
+
+--please start the slave nodes first in a connected system by 
+
+stack exec example slave (host name here) (port number here) &
+stack exec example slave (host name here) (port number here) &
+......
+.....
+....
+-- combination of host name and port name should be different
+
+
+--then start the master node by 
+
+
+stack exec example master (host name here) (port number here) -- --send-for x --wait-for y --with-seed z
+
+-- where x,y,z are Natural numbers
