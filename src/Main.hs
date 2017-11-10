@@ -98,3 +98,4 @@ main = do
     ["slave", host, port] -> do
       backend <- initializeBackend host port myRemoteTable
       startSlave backend
+    _-> print "Please provide valid arguments"
