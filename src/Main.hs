@@ -33,13 +33,11 @@ accumulateIncomingMsgs count acc nodes =
    receiveWait [
             match $ \(i::Double) ->
               accumulateIncomingMsgs (count +1) (i:acc) nodes,
-            match $ \(node::NodeId,totalNodes::Int)->do
-              if (length.nub $ node:nodes)==totalNodes then do
+            match $ \(node::NodeId,totalNodes::Int)->
+              if (length.nub $ node:nodes)==totalNodes then
                   say $ unlines ["\ntotal messages : " ++ show count,
                       "sigma : " ++ (show .sum .zipWith (*) [1..] $ acc) ]
-                  getSelfNode >>= terminateSlave
-                else do
-                liftIO . putStrLn $ "got node signal " ++ (show (node,totalNodes))
+                else
                 accumulateIncomingMsgs count acc (node:nodes)
               ]
 
@@ -86,6 +84,7 @@ master backend slaves = do
   bGroups <- makeBroadCastGroups $ mnode:slaves
   forM_ bGroups $ broadCast 1 1
   liftIO $ threadDelay 2000000
+  terminateAllSlaves backend
 
 main :: IO ()
 main = do
