@@ -52,8 +52,8 @@ data BroadCastingGroup = BG Int NodeId [ProcessId]
 -- | Starting process which will run on each node
 --   before message sending starts to be ready to accept
 --   accumulate messages
-start::Process ()
-start = do
+startReceiving::Process ()
+startReceiving = do
   p <- getSelfPid
   say $ "Started process " ++ show p
   accumulateIncomingMsgs 0 [] []
@@ -105,7 +105,7 @@ sendMsg senderId stoppingTime rNums pids = do
 
 -- | entry in static remote table of our functions for
 --   run time accese by every node
-remotable ['start, 'startSendingMsg]
+remotable ['startReceiving, 'startSendingMsg]
 
 -- | broadcast spawns the process on the node to send messages
 --   continuosly to the receiving members by calling startSendingMsg
@@ -117,7 +117,7 @@ broadCast sendFor seed (BG senderId n recvs) =
 --   of BroadcastingGroups
 makeBroadCastGroups::[NodeId]->Process [BroadCastingGroup]
 makeBroadCastGroups nodes = do
-  pids <- forM nodes $ \node -> spawn node $ $(mkStaticClosure 'start)
+  pids <- forM nodes $ \node -> spawn node $ $(mkStaticClosure 'startReceiving)
   let bGroups = zipWith3 BG [1..] nodes (repeat pids)
   return bGroups
 
