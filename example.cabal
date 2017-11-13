@@ -23,3 +23,6 @@ executable example
                      , distributed-process
                      , random
                      , time 
+                     , vector
+                     , vector-binary-instances
+                     , primitive

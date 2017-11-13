@@ -3,21 +3,44 @@
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
+{-# LANGUAGE TypeFamilies        #-}
+
 module Main where
 import           Control.Concurrent                                 (threadDelay)
-import           Control.Distributed.Process
+import           Control.Distributed.Process                        hiding
+                                                                     (Message)
 import           Control.Distributed.Process.Backend.SimpleLocalnet
 import           Control.Distributed.Process.Closure
 import           Control.Distributed.Process.Node                   (initRemoteTable)
 import           Control.Monad
+import           Control.Monad.Primitive
 import           Data.Binary
+import           Data.Binary.Put
+import           Data.Binary.Get
+import           Data.Int
 import           Data.List                                          (nub)
 import           Data.Time.Clock
 import           Data.Typeable
+import qualified Data.Vector.Unboxed                                as V
+import qualified Data.Vector.Unboxed.Mutable                        as MV
 import           GHC.Generics                                       (Generic)
 import           System.Environment                                 (getArgs)
 import           System.Random
 import           Text.Printf
+import           Data.Vector.Binary
+
+
+
+
+data Message = Message { 
+                 val::Double
+               , senderId::Int
+               , sendState::V.Vector Int64
+               }
+ deriving (Eq,Show,Typeable,Generic)
+
+
+instance Binary Message
 
 -- | BroadcastingGroup consists of the nodeId from
 --   which messages has to be broadcated or sent to
@@ -76,7 +99,8 @@ sendRandoms stoppingTime rNums pids = do
        let allNodeCount = length pids
        void $ spawnLocal (forM_ pids $ \p -> send p (node,allNodeCount))
       else do
-         spawnLocal (forM_ pids $ \p -> send p (head rNums))
+        --  spawnLocal (forM_ pids $ \p -> send p (head rNums))
+         forM_ pids $ \p -> send p (head rNums)
          sendRandoms stoppingTime (tail rNums) pids
 
 -- | entry in static remote table of our functions for
