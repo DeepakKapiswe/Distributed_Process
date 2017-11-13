@@ -42,6 +42,26 @@ data Message = Message {
 
 instance Binary Message
 
+instance Ord Message where
+  compare m1@(Message _ x stateVecX) m2@(Message _ y stateVecY) 
+   | a <  a'  &&  b <  b' = LT
+   | a == a'  &&  b <  b' = LT
+   | a >  a'  &&  b == b' = GT
+   | a >  a'  &&  b >  b' = GT
+   | otherwise = EQ
+   where
+        a  = (V.!) stateVecX x
+        a' = (V.!) stateVecY x
+        b  = (V.!) stateVecY y
+        b' = (V.!) stateVecY y
+
+storeMessages::[Message]->Message->[Message]
+storeMessages [] m = [m]
+storeMessages l@(x:xs) m = case compare m x of
+  GT -> m:l
+  _   -> x:(storeMessages xs m )
+
+
 -- | BroadcastingGroup consists of the nodeId from
 --   which messages has to be broadcated or sent to
 --   the receiver processes
@@ -62,15 +82,16 @@ startReceiving = do
 --   all other nodes send messages to them and they accumutale
 --   the results and decide when to print the results if got
 --   any signal.They perform only receiving task
-accumulateIncomingMsgs::Int->[Double]->[NodeId]->Process ()
+accumulateIncomingMsgs::Int->[Message]->[NodeId]->Process ()
 accumulateIncomingMsgs count acc nodes =
    receiveWait [
-            match $ \(Message d sid sState::Message) ->
-              accumulateIncomingMsgs (count +1) (d:acc) nodes,
+            match $ \m@(Message d sid sState::Message) ->
+              accumulateIncomingMsgs (count +1) (m:acc) nodes,
             match $ \(node::NodeId,totalNodes::Int)->
               if (length.nub $ node:nodes)==totalNodes then
                   say $ unlines ["\ntotal messages : " ++ show count,
-                      "sigma : " ++ (show .sum .zipWith (*) [1..] $ acc) ]
+                      "sigma : " ++ (show .sum .zipWith (*) [1..] $ val <$>acc),
+                                unlines.take 20 $ (show.sendState) <$>acc]
                 else
                 accumulateIncomingMsgs count acc (node:nodes)
               ]
