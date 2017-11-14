@@ -1,9 +1,7 @@
-{-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell     #-}
-{-# LANGUAGE TypeFamilies        #-}
 
 module Main where
 import           Control.Concurrent                                 (threadDelay)
@@ -83,7 +81,7 @@ storeMessages acc@(x:xs) m = case compare m x of
 -- | updateStateVecIM takes a mutable unboxed vector (here NodeStateM) and other
 --   immutable unboxed vector and modifies the former with applying updateVal function
 updateStateVecIM::(PrimMonad m, MV.Unbox a, Ord a)=> (MV.MVector (PrimState m) a) -> V.Vector a -> m ( )
-updateStateVecIM oldStateVec newMsgStateVec = V.ifoldM'_ (updateVal) oldStateVec newMsgStateVec
+updateStateVecIM oldStateVecM newMsgStateVecIM = V.ifoldM'_ updateVal oldStateVecM newMsgStateVecIM
 
 -- | updateVal updates a value of mutable vector if the value supplied is larger
 updateVal::(PrimMonad m, MV.Unbox a,Ord a)=>MV.MVector (PrimState m) a -> Int-> a -> m (MV.MVector (PrimState m) a)
@@ -100,16 +98,14 @@ updateVal mvector idx val = do
 --   the message receiving loop
 startNodeProcess::BroadcastConfig->Process ()
 startNodeProcess (Config nodeStateVecIM senderId sendFor seed) = do
-  p <- getSelfPid
-  say $ "Started process " ++ show p
+  say $ "Started process in Node " ++ show (1+senderId)
+  
+  nodeStateVecM <- liftIO $ V.unsafeThaw nodeStateVecIM
+  pids <- expect ::Process [ProcessId]
 
   currentTime <- liftIO getCurrentTime
   let randomList = randomRs (0::Double,1::Double) (mkStdGen seed)
       sendingTime = addUTCTime (fromIntegral sendFor) currentTime
-  
-  nodeStateVecM <- liftIO $ V.unsafeThaw nodeStateVecIM
-  pids <- expect ::Process [ProcessId]
-  
   spawnLocal $ sendMsg nodeStateVecM senderId sendingTime randomList pids
   accumulateIncomingMsgs nodeStateVecM 0 [] []
 
@@ -154,7 +150,6 @@ sendMsg nodeStateVecM senderId stoppingTime rNums pids = do
 --   run time accese by every node
 remotable ['startNodeProcess]
 
-
 -- | our Static remote table
 myRemoteTable :: RemoteTable
 myRemoteTable = Main.__remoteTable initRemoteTable
@@ -164,7 +159,6 @@ myRemoteTable = Main.__remoteTable initRemoteTable
 --   after correct time if not done
 master :: Int->Int->Int->Backend -> [NodeId] -> Process ()
 master sendFor waitFor seed backend slaves = do
-  say "Master Node Started"
   mnode<-getSelfNode
   
   let allNodeCount = length slaves + 1
