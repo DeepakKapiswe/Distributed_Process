@@ -27,7 +27,11 @@ import           System.Random
 import           Text.Printf
 import           Data.Vector.Binary
 
-
+-- | Our Message Type which consists of the 
+--   actual val (random number)
+--   senderId is the index representing node in sendState
+--   sendState is the Known State of whole system according 
+--   to sender node at the time of sending of message
 data Message = Message { 
                  val::Double
                , senderId::Int
@@ -37,6 +41,9 @@ data Message = Message {
 
 instance Binary Message
 
+
+-- | Main Logic of comparing two messages based on
+--   their StateVector (Ref. to documentation for more details)
 instance Ord Message where
   compare m1@(Message _ x stateVecX) 
           m2@(Message _ y stateVecY) 
@@ -66,12 +73,13 @@ type NodeStateIM = V.Vector Int64
 
 storeMessages::[Message]->Message->[Message]
 storeMessages [] m = [m]
-storeMessages l@(x:xs) m = case compare m x of
-  GT -> m:l
+storeMessages acc@(x:xs) m = case compare m x of
+  GT -> m:acc
+  EQ | senderId m > senderId x -> m:acc 
   _   -> x:(storeMessages xs m )
 
-mergeTwoStateVec::(PrimMonad m, MV.Unbox a, Ord a)=> (MV.MVector (PrimState m) a) -> V.Vector a -> m ( )
-mergeTwoStateVec oldStateVec newMsgStateVec = V.ifoldM'_ (updateVal) oldStateVec newMsgStateVec
+updateStateVecIM::(PrimMonad m, MV.Unbox a, Ord a)=> (MV.MVector (PrimState m) a) -> V.Vector a -> m ( )
+updateStateVecIM oldStateVec newMsgStateVec = V.ifoldM'_ (updateVal) oldStateVec newMsgStateVec
 
 updateVal::(PrimMonad m, MV.Unbox a,Ord a)=>MV.MVector (PrimState m) a -> Int-> a -> m (MV.MVector (PrimState m) a)
 updateVal mvector idx val = do
@@ -105,8 +113,7 @@ accumulateIncomingMsgs::NodeStateM->Int->[Message]->[NodeId]->Process ()
 accumulateIncomingMsgs nodeStateVec count acc nodes =
    receiveWait [
             match $ \m@(Message d sid sState::Message) -> do
-              say . show $  sState
-              liftIO $ mergeTwoStateVec nodeStateVec sState
+              liftIO $ updateStateVecIM nodeStateVec sState
               accumulateIncomingMsgs nodeStateVec (count +1) (m:acc) nodes,
             match $ \(node::NodeId,totalNodes::Int)->
               if (length.nub $ node:nodes)==totalNodes then
@@ -147,7 +154,6 @@ myRemoteTable = Main.__remoteTable initRemoteTable
 -- | master will start actual program execution with
 --   starting all the slave nodes and also terminating
 --   after correct time if not done
-
 master :: Int->Int->Int->Backend -> [NodeId] -> Process ()
 master sendFor waitFor seed backend slaves = do
   say "Master Node Started"
