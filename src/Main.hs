@@ -62,6 +62,16 @@ storeMessages l@(x:xs) m = case compare m x of
   _   -> x:(storeMessages xs m )
 
 
+mergeTwoStateVec::(PrimMonad m, MV.Unbox a, Ord a)=> (MV.MVector (PrimState m) a) -> V.Vector a -> m ( )
+mergeTwoStateVec oldStateVec newMsgStateVec = V.ifoldM'_ (updateVal) oldStateVec newMsgStateVec
+
+
+updateVal::(PrimMonad m, MV.Unbox a,Ord a)=>MV.MVector (PrimState m) a -> Int-> a -> m (MV.MVector (PrimState m) a)
+updateVal mvector idx val = do
+  oldVal <- MV.read mvector idx
+  when (val > oldVal) $ MV.write mvector idx val 
+  return mvector
+
 -- | BroadcastingGroup consists of the nodeId from
 --   which messages has to be broadcated or sent to
 --   the receiver processes
