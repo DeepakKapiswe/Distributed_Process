@@ -43,7 +43,7 @@ instance Binary Message
 
 
 -- | Main Logic of comparing two messages based on
---   their StateVector (Ref. to documentation for more details)
+--   their StateVector (refer to documentation for more details)
 instance Ord Message where
   compare m1@(Message _ x stateVecX) 
           m2@(Message _ y stateVecY) 
@@ -57,7 +57,7 @@ instance Ord Message where
         a' = (V.!) stateVecY x
         b  = (V.!) stateVecY y
         b' = (V.!) stateVecY y
-
+-- | auxiliary configuration type for starting process on each node
 data BroadcastConfig = Config {
               initStateVec::NodeStateIM
              , bSenderId:: Int
@@ -68,9 +68,12 @@ data BroadcastConfig = Config {
 
 instance Binary BroadcastConfig
 
-type NodeStateM = MV.MVector RealWorld Int64   
-type NodeStateIM = V.Vector Int64   
+type NodeStateM = MV.MVector RealWorld Int64 -- Node State Mutable version 
+type NodeStateIM = V.Vector Int64  -- Node State immutable for sending in Message
 
+-- | storeMessages inserts the coming message in the accumulated
+--   list after comparision, Its guaranteed that message would 
+--   reside at the corect postion
 storeMessages::[Message]->Message->[Message]
 storeMessages [] m = [m]
 storeMessages acc@(x:xs) m = case compare m x of
@@ -78,9 +81,12 @@ storeMessages acc@(x:xs) m = case compare m x of
   EQ | senderId m > senderId x -> m:acc 
   _   -> x:(storeMessages xs m )
 
+-- | updateStateVecIM takes a mutable unboxed vector (here NodeStateM) and other
+--   immutable unboxed vector and modifies the former with applying updateVal function
 updateStateVecIM::(PrimMonad m, MV.Unbox a, Ord a)=> (MV.MVector (PrimState m) a) -> V.Vector a -> m ( )
 updateStateVecIM oldStateVec newMsgStateVec = V.ifoldM'_ (updateVal) oldStateVec newMsgStateVec
 
+-- | updateVal updates a value of mutable vector if the value supplied is larger
 updateVal::(PrimMonad m, MV.Unbox a,Ord a)=>MV.MVector (PrimState m) a -> Int-> a -> m (MV.MVector (PrimState m) a)
 updateVal mvector idx val = do
   oldVal <- MV.read mvector idx
@@ -88,33 +94,36 @@ updateVal mvector idx val = do
   return mvector
 
 -- | Starting process which will run on each node
---   it spawns a thread for broadcasting messages
---   and accumulates the results
+--   converts the immutable nodeStateVec to mutable version
+--   then spawns a thread for broadcasting messages with 
+--   reference to the mutable node state vec, random number list
+--   maximum sending time and receiver pids then starts 
+--   the message receiving loop
 startNodeProcess::BroadcastConfig->Process ()
 startNodeProcess (Config nodeStateVecIM senderId sendFor seed) = do
   p <- getSelfPid
   say $ "Started process " ++ show p
 
-  nodeStateVecM <- liftIO $ V.unsafeThaw nodeStateVecIM
-  pids <- expect ::Process [ProcessId]
-  
   currentTime <- liftIO getCurrentTime
   let randomList = randomRs (0::Double,1::Double) (mkStdGen seed)
       sendingTime = addUTCTime (fromIntegral sendFor) currentTime
-
+  
+  nodeStateVecM <- liftIO $ V.unsafeThaw nodeStateVecIM
+  pids <- expect ::Process [ProcessId]
+  
   spawnLocal $ sendMsg nodeStateVecM senderId sendingTime randomList pids
   accumulateIncomingMsgs nodeStateVecM 0 [] []
 
--- | The accumulating process, It runs on each node and
---   all other nodes send messages to them and they accumutale
---   the results and decide when to print the results if got
---   any signal.They perform only receiving task
+-- | The accumulating process loop, It runs on each node 
+--   updates the NodeState Vec, accumutales
+--   messages and decide when to print the results if got
+--   any signal otherwise do same operations in loop
 accumulateIncomingMsgs::NodeStateM->Int->[Message]->[NodeId]->Process ()
 accumulateIncomingMsgs nodeStateVec count acc nodes =
    receiveWait [
             match $ \m@(Message d sid sState::Message) -> do
               liftIO $ updateStateVecIM nodeStateVec sState
-              accumulateIncomingMsgs nodeStateVec (count +1) (m:acc) nodes,
+              accumulateIncomingMsgs nodeStateVec (count+1) (m:acc) nodes,
             match $ \(node::NodeId,totalNodes::Int)->
               if (length.nub $ node:nodes)==totalNodes then
                   say $ unlines ["\ntotal messages : " ++ show count,
@@ -126,8 +135,8 @@ accumulateIncomingMsgs nodeStateVec count acc nodes =
 -- | sendMsg checks the current time of the node
 --   and sends proper signal (in the form of different type of message)
 --   to the receiving process that sending time has expired, else
---   it send the head of the random number list
---   to the receiving nodes (processes) and this cycles continues
+--   it send the head of the random number list after updating the 
+--   node state vector with increase by one in index senderId 
 sendMsg::NodeStateM->Int->UTCTime->[Double]->[ProcessId]->Process ()
 sendMsg nodeStateVecM senderId stoppingTime rNums pids = do
   currentTime <- liftIO getCurrentTime
@@ -136,11 +145,11 @@ sendMsg nodeStateVecM senderId stoppingTime rNums pids = do
        let allNodeCount = length pids
        void $ spawnLocal (forM_ pids $ \p -> send p (node,allNodeCount))
       else do
-         forM_ pids $ \p -> do
            liftIO $ MV.modify nodeStateVecM  (+1) senderId 
            sState <- liftIO $ V.freeze nodeStateVecM
-           send p (Message (head rNums) senderId sState) 
-         sendMsg nodeStateVecM senderId stoppingTime (tail rNums) pids
+           let msg = Message (head rNums) senderId sState
+           forM_ pids $ \p -> send p msg
+           sendMsg nodeStateVecM senderId stoppingTime (tail rNums) pids
 
 -- | entry in static remote table of our functions for
 --   run time accese by every node
