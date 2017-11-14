@@ -7,15 +7,14 @@
 
 module Main where
 import           Control.Concurrent                                 (threadDelay)
-import           Control.Distributed.Process                        hiding
-                                                                     (Message)
+import           Control.Distributed.Process                hiding  (Message)
 import           Control.Distributed.Process.Backend.SimpleLocalnet
 import           Control.Distributed.Process.Closure
 import           Control.Distributed.Process.Node                   (initRemoteTable)
-import           Control.Monad
+import           Control.Monad 
 import           Control.Monad.Primitive
 import           Data.Binary
-import           Data.Int
+import           Data.Int                                           (Int64)
 import           Data.List                                          (nub)
 import           Data.Time.Clock
 import           Data.Typeable
@@ -120,17 +119,17 @@ startNodeProcess (Config nodeStateVecIM senderId sendFor seed) = do
 --   any signal otherwise do same operations in loop
 accumulateIncomingMsgs::NodeStateM->Int->[Message]->[NodeId]->Process ()
 accumulateIncomingMsgs nodeStateVec count acc nodes =
-   receiveWait [
-            match $ \m@(Message d sid sState::Message) -> do
-              liftIO $ updateStateVecIM nodeStateVec sState
-              accumulateIncomingMsgs nodeStateVec (count+1) (m:acc) nodes,
-            match $ \(node::NodeId,totalNodes::Int)->
-              if (length.nub $ node:nodes)==totalNodes then
-                  say $ unlines ["\ntotal messages : " ++ show count,
-                      "sigma : " ++ (show .sum .zipWith (*) [1..] $ val <$>acc)]
-                else
-                accumulateIncomingMsgs nodeStateVec count acc (node:nodes)
-              ]
+  receiveWait [
+    match $ \m@(Message d sid sState::Message) -> do
+      liftIO $ updateStateVecIM nodeStateVec sState
+      accumulateIncomingMsgs nodeStateVec (count+1) (m:acc) nodes,
+    match $ \(node::NodeId,totalNodes::Int)->
+      if (length.nub $ node:nodes)==totalNodes then
+          say $ unlines ["\ntotal messages : " ++ show count,
+              "sigma : " ++ (show .sum .zipWith (*) [1..] $ val <$>acc)]
+        else
+        accumulateIncomingMsgs nodeStateVec count acc (node:nodes)
+      ]
 
 -- | sendMsg checks the current time of the node
 --   and sends proper signal (in the form of different type of message)
