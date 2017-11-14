@@ -78,7 +78,7 @@ storeMessages [] m = [m]
 storeMessages acc@(x:xs) m = case compare m x of
   GT -> m:acc
   EQ | senderId m > senderId x -> m:acc 
-  _   -> x:(storeMessages xs m )
+  _   -> x : storeMessages xs m
 
 -- | updateStateVecIM takes a mutable unboxed vector (here NodeStateM) and other
 --   immutable unboxed vector and modifies the former with applying updateVal function
