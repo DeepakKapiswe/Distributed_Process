@@ -23,7 +23,6 @@ import           Data.Time.Clock
 import           Data.Typeable
 import qualified Data.Vector.Unboxed                                as V
 import qualified Data.Vector.Unboxed.Mutable                        as MV
---import qualified Data.Vector.Unbo.Mutable                        as MV
 import           GHC.Generics                                       (Generic)
 import           System.Environment                                 (getArgs)
 import           System.Random
@@ -73,23 +72,41 @@ updateVal mvector idx val = do
   when (val > oldVal) $ MV.write mvector idx val 
   return mvector
 
--- | BroadcastingGroup consists of the nodeId from
---   which messages has to be broadcated or sent to
---   the receiver processes
+
+data BroadcastConfig = Config {
+              initStateVec::NodeStateIM
+             , bSenderId:: Int
+             , bSendFor::Int
+             , bSeed:: Int 
+             }
+ deriving (Eq,Show,Typeable,Generic)
+
+instance Binary BroadcastConfig
+
+-- | BroadcastingGroup consists of the senderId ,nodeId and 
+--   receiver ProcessIds  
 
 data BroadCastingGroup = BG Int NodeId [ProcessId]
    deriving (Eq,Show)
 
 type NodeStateM = MV.MVector RealWorld Int64   
 type NodeStateIM = V.Vector Int64   
+
 -- | Starting process which will run on each node
 --   before message sending starts to be ready to accept
 --   accumulate messages
-startReceiving::NodeStateIM->Process ()
-startReceiving nodeStateVecIM = do
+startReceiving::BroadcastConfig->Process ()
+startReceiving (Config nodeStateVecIM senderId sendFor seed) = do
   p <- getSelfPid
   say $ "Started process " ++ show p
   nodeStateVecM <- liftIO $ V.unsafeThaw nodeStateVecIM
+  pids <- expect ::Process [ProcessId]
+  
+  currentTime <- liftIO getCurrentTime
+  let randomList = randomRs (0::Double,1::Double) (mkStdGen seed)
+      sendingTime = addUTCTime (fromIntegral sendFor) currentTime
+  spawnLocal $ sendMsg nodeStateVecM senderId sendingTime randomList pids
+  
   accumulateIncomingMsgs nodeStateVecM 0 [] []
 
 -- | The accumulating process, It runs on each node and
@@ -100,16 +117,18 @@ accumulateIncomingMsgs::NodeStateM->Int->[Message]->[NodeId]->Process ()
 accumulateIncomingMsgs nodeStateVec count acc nodes =
    receiveWait [
             match $ \m@(Message d sid sState::Message) -> do
+              say . show $  sState
               liftIO $ mergeTwoStateVec nodeStateVec sState
               accumulateIncomingMsgs nodeStateVec (count +1) (m:acc) nodes,
             match $ \(node::NodeId,totalNodes::Int)->
               if (length.nub $ node:nodes)==totalNodes then
                   say $ unlines ["\ntotal messages : " ++ show count,
-                      "sigma : " ++ (show .sum .zipWith (*) [1..] $ val <$>acc),
-                                unlines.take 20 $ (show.sendState) <$>acc]
+                      "sigma : " ++ (show .sum .zipWith (*) [1..] $ val <$>acc)]
                 else
                 accumulateIncomingMsgs nodeStateVec count acc (node:nodes)
               ]
+-- config (NodeStateIM,senderId,sendFor,seed)
+--type Config = (NodeStateIM,Int,Int,Int)
 
 -- | startSendingMsg is the process which calls sendMsg
 --   with proper argument and random number list i.e
@@ -119,7 +138,7 @@ startSendingMsg::(NodeStateIM,Int,Int,Int,[ProcessId]) -> Process ()
 startSendingMsg (nodeStateVecIM,senderId,sendFor,seed,pids) = do
    currentTime <- liftIO getCurrentTime
    let randomList = randomRs (0::Double,1::Double) (mkStdGen seed)
-       sendingTime = addUTCTime (fromIntegral sendFor)  currentTime
+       sendingTime = addUTCTime (fromIntegral sendFor) currentTime
    nodeStateVecM <- liftIO $ V.unsafeThaw nodeStateVecIM
    sendMsg nodeStateVecM senderId sendingTime randomList pids
 
@@ -158,7 +177,7 @@ makeBroadCastGroups::[(NodeId,NodeStateIM)]->Process [BroadCastingGroup]
 makeBroadCastGroups nodesAndStates = do
   pids <- forM nodesAndStates $ \(node,nodeStateVec) -> 
     spawn node $ $(mkClosure 'startReceiving) nodeStateVec
-  let bGroups = zipWith3 BG [1..] (fst <$> nodesAndStates) (repeat pids)
+  let bGroups = zipWith3 BG [0..] (fst <$> nodesAndStates) (repeat pids)
   return bGroups
 
 -- | our Static remote table
@@ -175,9 +194,12 @@ master sendFor waitFor seed backend slaves = do
   mnode<-getSelfNode
   let allNodeCount = length slaves + 1
       nodeStateVecs = replicate allNodeCount $ V.replicate allNodeCount (0::Int64)
-  broadCastingGroups <- makeBroadCastGroups . zip (mnode:slaves) $ nodeStateVecs
+      configs = zipWith3 (\v sid seed-> Config v sid sendFor seed) nodeStateVecs [0..] [seed..] 
+      nodesAndConfigs = zip (mnode:slaves) configs
+  pids <- forM nodesAndConfigs $ \(node,conf) -> 
+    spawn node $ $(mkClosure 'startReceiving) conf
+  forM_ pids $ \pid -> send pid pids
   say "All Nodes Started"
-  zipWithM_ ($) (zipWith (broadCast sendFor) nodeStateVecs [seed..]) broadCastingGroups
   say $ printf "sending messages for %d seconds" sendFor
   liftIO. threadDelay $ 1000000 * sendFor
   say $ printf "waiting for printing the results %d seconds" waitFor
