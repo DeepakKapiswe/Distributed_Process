@@ -20,7 +20,7 @@ My goal is to implement a distributed system in which:
 
 3: after the grace period the program gets killed
 
-#My assumptions ::
+# My assumptions ::
  
  * I have assumed that the underlying network is quiet rock solid for now
    so no message loss supposed at this moment.
@@ -40,7 +40,7 @@ My goal is to implement a distributed system in which:
  * There is "no" pre-assumption that clocks of all nodes agree with all.
 
 
-#Solution ::
+# Solution ::
 
 I can see inherently presence of broadcasting nature in the problem
 
@@ -53,7 +53,7 @@ amount of time, which also I have immplemented, it was just a
 matter of time to grasp the library (distributed-process)  CH.
 
 
-#Difficulties ::
+# Difficulties ::
 Now problem I faced when I have to print the results, which requires arranging 
 the messages in the order of sending time which is a fundamental problem in any
 distributed programming.
@@ -67,7 +67,7 @@ But after a little more research and thinking I came upto the point that it will
 give us the exactness required of the scale we may want to guarantee in distributive 
 programing (we may differ in sec's scale which is quiet big from computing's point of view) 
 
-#My Algorithm ::
+# My Algorithm ::
 
 After analysing the difficulties I came upto the point that we can't rely on any
 estimation technique as we may want guarantee that the output should be
@@ -77,7 +77,7 @@ Then I focussed on the point that what information we can use to compare the mes
 which is proofed or guaranteed and finally came to my current solution to
 this fundamental problem in distributed systems but restricted to our given use case.
  
-#Specifications about the Algorithm
+# Specifications about the Algorithm
 
  * Every node maintains the best possible known state of the global known system.
 
@@ -155,7 +155,7 @@ this fundamental problem in distributed systems but restricted to our given use 
  * That's all after getting final signal from other nodes each nodes start computing
    and printing the result to stderr and then shuts down on time.
 
-#For Better or Higher Score ::
+# For Better or Higher Score ::
 
 I came up  with a simple hack of generating the random number list and then 
 dividing the list into chunks and giving the sorted chunks to the worker process
@@ -167,7 +167,7 @@ to send across ... hoping this will increase the sigma :)
  interesting part might be implementation of virtual clock as learning to handle APIs
  is not a big thing in my view.
 
-#About the code ::
+# About the code ::
 
 I have kept my code very simple and understandable I know it is not a polished Haskell 
 Program but I gave more importance to design and implement the algorithm with correctness.
